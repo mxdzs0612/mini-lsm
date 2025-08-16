@@ -314,7 +314,18 @@ impl LsmStorageInner {
 
     /// Put a key-value pair into the storage by writing into the current memtable.
     pub fn put(&self, _key: &[u8], _value: &[u8]) -> Result<()> {
-        self.state.read().memtable.put(_key, _value)
+        let read_lock = self.state.read();
+        let res = read_lock.memtable.put(_key, _value);
+        if res.is_ok() {
+            if read_lock.memtable.approximate_size() > self.options.target_sst_size {
+                let state_lock = self.state_lock.lock();
+                if read_lock.memtable.approximate_size() > self.options.target_sst_size {
+                    drop(read_lock);
+                    return self.force_freeze_memtable(&state_lock);
+                }
+            }
+        }
+        res
     }
 
     /// Remove a key from the storage by writing an empty value.
@@ -344,7 +355,14 @@ impl LsmStorageInner {
 
     /// Force freeze the current memtable to an immutable memtable
     pub fn force_freeze_memtable(&self, _state_lock_observer: &MutexGuard<'_, ()>) -> Result<()> {
-        unimplemented!()
+        let mut state = self.state.write();
+        let state = Arc::make_mut(&mut state);
+        let old_mem = std::mem::replace(
+            &mut state.memtable,
+            Arc::new(MemTable::create(self.next_sst_id())),
+        );
+        state.imm_memtables.insert(0, old_mem);
+        Ok(())
     }
 
     /// Force flush the earliest-created immutable memtable to disk
