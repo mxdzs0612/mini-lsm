@@ -298,13 +298,16 @@ impl LsmStorageInner {
 
     /// Get a key from the storage. In day 7, this can be further optimized by using a bloom filter.
     pub fn get(&self, _key: &[u8]) -> Result<Option<Bytes>> {
-        Ok(self.state.read().memtable.get(_key).and_then(|bytes| {
-            if bytes.is_empty() {
-                None
-            } else {
-                Some(bytes.clone())
+        let read_lock = self.state.read();
+        if let Some(bytes) = read_lock.memtable.get(_key) {
+            return Ok((!bytes.is_empty()).then(|| bytes.clone()));
+        }
+        for imm_memtable in &read_lock.imm_memtables {
+            if let Some(bytes) = imm_memtable.get(_key) {
+                return Ok((!bytes.is_empty()).then(|| bytes.clone()));
             }
-        }))
+        }
+        Ok(None)
     }
 
     /// Write a batch of data into the storage. Implement in week 2 day 7.
