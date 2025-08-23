@@ -17,8 +17,9 @@
 
 use std::cmp::{self};
 use std::collections::BinaryHeap;
+use std::collections::binary_heap::PeekMut;
 
-use anyhow::Result;
+use anyhow::{Ok, Result};
 
 use crate::key::KeySlice;
 
@@ -59,7 +60,17 @@ pub struct MergeIterator<I: StorageIterator> {
 
 impl<I: StorageIterator> MergeIterator<I> {
     pub fn create(iters: Vec<Box<I>>) -> Self {
-        unimplemented!()
+        let mut merge_iterator = MergeIterator {
+            iters: iters
+                .into_iter()
+                .filter(|i| i.is_valid())
+                .enumerate()
+                .map(|(idx, boxed)| HeapWrapper(idx, boxed))
+                .collect::<BinaryHeap<_>>(),
+            current: None,
+        };
+        merge_iterator.current = merge_iterator.iters.pop();
+        merge_iterator
     }
 }
 
@@ -69,18 +80,46 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
     type KeyType<'a> = KeySlice<'a>;
 
     fn key(&self) -> KeySlice<'_> {
-        unimplemented!()
+        self.current.as_ref().unwrap().1.key()
     }
 
     fn value(&self) -> &[u8] {
-        unimplemented!()
+        self.current.as_ref().unwrap().1.value()
     }
 
     fn is_valid(&self) -> bool {
-        unimplemented!()
+        self.current
+            .as_ref()
+            .map_or(false, |iter| iter.1.is_valid())
     }
 
     fn next(&mut self) -> Result<()> {
-        unimplemented!()
+        let k = self.current.as_ref().unwrap().1.key();
+        while let Some(mut iter) = self.iters.peek_mut() {
+            if !iter.1.is_valid() {
+                PeekMut::pop(iter);
+                continue;
+            }
+            if iter.1.key() > k {
+                break;
+            }
+            if let Err(e) = iter.1.next() {
+                PeekMut::pop(iter);
+                return Err(e);
+            }
+            if !iter.1.is_valid() {
+                PeekMut::pop(iter);
+            }
+        }
+        let mut cur = self.current.take().unwrap();
+        if let Err(e) = cur.1.next() {
+            self.current = self.iters.pop();
+            return Err(e);
+        }
+        if cur.1.is_valid() {
+            self.iters.push(cur);
+        }
+        self.current = self.iters.pop();
+        Ok(())
     }
 }
