@@ -15,7 +15,7 @@
 // #![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
 // #![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 use crate::{
     iterators::{StorageIterator, merge_iterator::MergeIterator},
@@ -51,7 +51,12 @@ impl StorageIterator for LsmIterator {
     }
 
     fn next(&mut self) -> Result<()> {
-        self.inner.next()
+        let res = self.inner.next();
+        if res.is_ok() && !self.key().is_empty() && self.value().is_empty() {
+            self.next()
+        } else {
+            res
+        }
     }
 }
 

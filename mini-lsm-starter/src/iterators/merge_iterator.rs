@@ -80,11 +80,17 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
     type KeyType<'a> = KeySlice<'a>;
 
     fn key(&self) -> KeySlice<'_> {
-        self.current.as_ref().unwrap().1.key()
+        self.current
+            .as_ref()
+            .map(|iter| iter.1.key())
+            .unwrap_or_else(|| KeySlice::from_slice(&[]))
     }
 
     fn value(&self) -> &[u8] {
-        self.current.as_ref().unwrap().1.value()
+        self.current
+            .as_ref()
+            .map(|iter| iter.1.value())
+            .unwrap_or(&[])
     }
 
     fn is_valid(&self) -> bool {
@@ -94,7 +100,10 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
     }
 
     fn next(&mut self) -> Result<()> {
-        let k = self.current.as_ref().unwrap().1.key();
+        let Some(iter) = self.current.as_ref() else {
+            return Ok(());
+        };
+        let k = iter.1.key();
         while let Some(mut iter) = self.iters.peek_mut() {
             if !iter.1.is_valid() {
                 PeekMut::pop(iter);
