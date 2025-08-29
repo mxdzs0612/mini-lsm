@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
-#![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
+// #![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
+// #![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
 
 mod builder;
 mod iterator;
 
 pub use builder::BlockBuilder;
-use bytes::Bytes;
+use bytes::{Buf, BufMut, Bytes};
 pub use iterator::BlockIterator;
 
 /// A block is the smallest unit of read and caching in LSM tree. It is a collection of sorted key-value pairs.
@@ -32,11 +32,24 @@ impl Block {
     /// Encode the internal data to the data layout illustrated in the course
     /// Note: You may want to recheck if any of the expected field is missing from your output
     pub fn encode(&self) -> Bytes {
-        unimplemented!()
+        let mut b = self.data.clone();
+        for offset in &self.offsets {
+            b.put_u16(*offset);
+        }
+        b.put_u16(self.offsets.len() as u16);
+        b.into()
     }
 
     /// Decode from the data layout, transform the input `data` to a single `Block`
     pub fn decode(data: &[u8]) -> Self {
-        unimplemented!()
+        let offset_extra_split = data.len() - 2;
+        let num = (&data[offset_extra_split..data.len()]).get_u16() as usize;
+        let data_offset_split = data.len() - 2 - 2 * num;
+        let offsets = data[data_offset_split..offset_extra_split]
+            .chunks_exact(2)
+            .map(|chunk| u16::from_be_bytes(chunk.try_into().unwrap()))
+            .collect();
+        let data = data[0..data_offset_split].to_vec();
+        Self { data, offsets }
     }
 }
