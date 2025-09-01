@@ -15,6 +15,8 @@
 // #![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
 // #![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
 
+use bytes::BufMut;
+
 use crate::key::{KeySlice, KeyVec};
 
 use super::Block;
@@ -50,15 +52,15 @@ impl BlockBuilder {
         if self.first_key.is_empty() {
             self.first_key = KeyVec::from_vec(key.raw_ref().to_vec());
         } else if self.block_size
-            < self.data.len() + self.offsets.len() * 2 + 2 + key.len() + value.len()
+            < self.data.len() + self.offsets.len() * 2 + 2 + key.len() + value.len() + 2 + 2 + 2
         {
             return false;
         }
         self.offsets.push(self.data.len() as u16);
-        self.data.extend_from_slice(&key.len().to_be_bytes());
-        self.data.extend_from_slice(&key.raw_ref());
-        self.data.extend_from_slice(&value.len().to_be_bytes());
-        self.data.extend_from_slice(&value);
+        self.data.put_u16(key.len() as u16);
+        self.data.put(key.raw_ref());
+        self.data.put_u16(value.len() as u16);
+        self.data.put(value);
 
         true
     }
