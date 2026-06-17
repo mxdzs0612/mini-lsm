@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 pub use builder::SsTableBuilder;
-use bytes::Buf;
+use bytes::{Buf, BufMut, Bytes};
 pub use iterator::SsTableIterator;
 
 use crate::block::Block;
@@ -50,15 +50,40 @@ impl BlockMeta {
     /// in order to help keep track of `first_key` when decoding from the same buffer in the future.
     pub fn encode_block_meta(
         block_meta: &[BlockMeta],
-        #[allow(clippy::ptr_arg)] // remove this allow after you finish
+        // #[allow(clippy::ptr_arg)] // remove this allow after you finish
         buf: &mut Vec<u8>,
     ) {
-        unimplemented!()
+        for block_meta in block_meta {
+            buf.put_u32(block_meta.offset as u32);
+            buf.put_u16(block_meta.first_key.len() as u16);
+            buf.extend_from_slice(block_meta.first_key.raw_ref());
+            buf.put_u16(block_meta.last_key.len() as u16);
+            buf.extend_from_slice(block_meta.last_key.raw_ref());
+        }
     }
 
     /// Decode block meta from a buffer.
-    pub fn decode_block_meta(buf: impl Buf) -> Vec<BlockMeta> {
-        unimplemented!()
+    pub fn decode_block_meta(mut buf: impl Buf) -> Vec<BlockMeta> {
+        let mut block_meta = Vec::new();
+        while buf.remaining() > 0 {
+            let offset = buf.get_u32() as usize;
+
+            let first_key_len = buf.get_u16() as usize;
+            let mut first_key = vec![0; first_key_len];
+            buf.copy_to_slice(&mut first_key);
+
+            let last_key_len = buf.get_u16() as usize;
+            let mut last_key = vec![0; last_key_len];
+            buf.copy_to_slice(&mut last_key);
+
+            block_meta.push(BlockMeta {
+                offset,
+                first_key: KeyBytes::from_bytes(Bytes::from(first_key)),
+                last_key: KeyBytes::from_bytes(Bytes::from(last_key)),
+            });
+        }
+
+        block_meta
     }
 }
 
